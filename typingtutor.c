@@ -45,7 +45,18 @@ typedef struct  {
     double accuracy;
     int wrongChars;
     char paragraph[max_para_length];
+    double wordsPerMinute;
+
 } TypingStats;
+
+typedef struct {
+    char username[50];
+    double typingSpeed;
+    double wordsPerMinute;
+    double accuracy;
+    char difficulty[10];
+} LeaderboardEntry;
+
 
 // Function to load the user profile from a file
 void loadUserProfile(UserProfile* profile) {
@@ -172,31 +183,36 @@ void printTypingStats(double elapsedTime, const char* input, const char* correct
         elapsedTime = 3;
     }
 
-    double typingSpeed = (totalCharacters / 5.0) / (elapsedTime / 60.0);
+    double wpm = (totalCharacters / 5.0) / (elapsedTime / 60.0);
+    double cpm = wpm * 5;
 
-    stats->typingSpeed = typingSpeed;
+    stats->typingSpeed = cpm;
     stats->accuracy = accuracy;
     stats->wrongChars = wrongCount;
+    stats->wordsPerMinute = wpm;
+
     strncpy(stats->paragraph, correctText, max_para_length);
 }
+
 
 // Display all previous attempts
 void displayPreviousAttempts(TypingStats attempts[], int numAttempts) {
     printf("\nPrevious Attempts:\n");
     printf("---------------------------------------------------------------------\n");
-    printf("| Attempt |  CPM  |  WPM  | Accuracy (%%) | Wrong Chars |\n");
-    printf("---------------------------------------------------------------------\n");
+   printf("| Attempt |  CPM   |  WPM   | Accuracy (%%) | Wrong Chars |\n");
+printf("---------------------------------------------------------------------\n");
 
-    for (int i = 0; i < numAttempts; i++) {
-        printf("|   %2d    |        %.2f       |  %.2f%%   |     %2d      |\n",
-               i + 1, attempts[i].typingSpeed, attempts[i].accuracy, attempts[i].wrongChars);
-    }
+for (int i = 0; i < numAttempts; i++) {
+    printf("|   %2d    | %6.2f | %6.2f |    %6.2f%%   |     %3d     |\n",
+           i + 1, attempts[i].typingSpeed, attempts[i].wordsPerMinute, attempts[i].accuracy, attempts[i].wrongChars);
+}
+
 
     printf("---------------------------------------------------------------------\n");
 }
 
 // Prompt user to choose difficulty
-void promptDifficulty(Difficulty *difficulty) {
+void promptDifficulty(Difficulty *difficulty, char *difficultyStr) {
     int choice;
     printf("Select difficulty level:\n1. Easy\n2. Medium\n3. Hard\n");
 
@@ -214,21 +230,24 @@ void promptDifficulty(Difficulty *difficulty) {
     }
 
     switch (choice) {
-        case 1:
-            *difficulty = (Difficulty){EASY_SPEED, EASY_MEDIUM_SPEED, MEDIUM_HARD_SPEED};
-            break;
-        case 2:
-            *difficulty = (Difficulty){EASY_MEDIUM_SPEED, MEDIUM_HARD_SPEED, HARD_MAX_SPEED};
-            break;
-        case 3:
-            *difficulty = (Difficulty){MEDIUM_HARD_SPEED, HARD_MAX_SPEED, HARD_SPEED + 4};
-            break;
-        default:
-            *difficulty = (Difficulty){EASY_SPEED, EASY_MEDIUM_SPEED, MEDIUM_HARD_SPEED};
+    case 1:
+        *difficulty = (Difficulty){EASY_SPEED, EASY_MEDIUM_SPEED, MEDIUM_HARD_SPEED};
+        strcpy(difficultyStr, "Easy");
+        break;
+    case 2:
+        *difficulty = (Difficulty){EASY_MEDIUM_SPEED, MEDIUM_HARD_SPEED, HARD_MAX_SPEED};
+        strcpy(difficultyStr, "Medium");
+        break;
+    case 3:
+        *difficulty = (Difficulty){MEDIUM_HARD_SPEED, HARD_MAX_SPEED, HARD_SPEED + 4};
+        strcpy(difficultyStr, "Hard");
+        break;
+    default:
+        *difficulty = (Difficulty){EASY_SPEED, EASY_MEDIUM_SPEED, MEDIUM_HARD_SPEED};
+        strcpy(difficultyStr, "Easy");
+}
 
-    }
-
-    fclose(file);
+    
 }
 
 // Save leaderboard to file
@@ -252,6 +271,28 @@ void saveLeaderboard(LeaderboardEntry leaderboard[], int numEntries)
 
     fclose(file);
 }
+
+void loadLeaderboard(LeaderboardEntry leaderboard[], int *numEntries) {
+    FILE *file = fopen("leaderboard.txt", "r");
+    if (!file) {
+        *numEntries = 0;
+        return;
+    }
+
+    *numEntries = 0;
+    while (fscanf(file, "%s %lf %lf %lf %s",
+                  leaderboard[*numEntries].username,
+                  &leaderboard[*numEntries].typingSpeed,
+                  &leaderboard[*numEntries].wordsPerMinute,
+                  &leaderboard[*numEntries].accuracy,
+                  leaderboard[*numEntries].difficulty) == 5) {
+        (*numEntries)++;
+        if (*numEntries >= max_leaderboard_entries) break;
+    }
+
+    fclose(file);
+}
+
 
 // Update leaderboard with current attempt
 void updateLeaderboard(UserProfile *profile, TypingStats *currentAttempt, const char *difficulty)
@@ -351,16 +392,56 @@ void displayLeaderboard(const char *difficulty)
 
     printf("-------------------------------------------------------------\n");
 }
+void showLeaderboardMenu() {
+    int choice;
+    char difficulty[10];
+
+    while (1) {
+        printf("\nLeaderboard Menu:\n");
+        printf("1. Easy\n2. Medium\n3. Hard\n4. Back to main menu\n");
+        printf("Enter your choice: ");
+        
+        if (scanf("%d", &choice) != 1) {
+            printf("Invalid input. Please enter a number.\n");
+            while (getchar() != '\n'); // clear input buffer
+            continue;
+        }
+        while (getchar() != '\n'); // clear input buffer
+        
+        switch (choice) {
+            case 1:
+                strcpy(difficulty, "Easy");
+                displayLeaderboard(difficulty);
+                break;
+            case 2:
+                strcpy(difficulty, "Medium");
+                displayLeaderboard(difficulty);
+                break;
+            case 3:
+                strcpy(difficulty, "Hard");
+                displayLeaderboard(difficulty);
+                break;
+            case 4:
+                return; // exit menu
+            default:
+                printf("Invalid choice. Please select 1-4.\n");
+        }
+    }
+}
+
 
 // Main typing loop
 int main() {
+    char selectedDifficulty[10];
+
     srand((unsigned int)time(NULL));
     UserProfile user;
     TypingStats attempts[max_attempts];
     Difficulty difficulty;
 
     loadUserProfile(&user);
-    promptDifficulty(&difficulty);
+    promptDifficulty(&difficulty, selectedDifficulty);
+
 
     int numAttempts = 0;
     char tryAgain;
@@ -397,6 +478,8 @@ int main() {
         printTypingStats(elapsedTime, inputText, paragraph, &currentStats);
         attempts[numAttempts++] = currentStats;
         updateUserProfile(&user, &currentStats);
+        updateLeaderboard(&user, &currentStats, selectedDifficulty);
+
 
         free(paragraph);
 
@@ -418,6 +501,34 @@ int main() {
 
     displayUserSummary(&user);
     displayPreviousAttempts(attempts, numAttempts);
+    char menuChoice;
+
+do {
+    printf("\nWhat would you like to do next?\n");
+    printf("1. View Leaderboard\n");
+    printf("2. View User Summary\n");
+    printf("3. Exit\n");
+    printf("Enter your choice: ");
+
+    menuChoice = getchar();
+    while (getchar() != '\n'); // clear input buffer
+
+    switch (menuChoice) {
+        case '1':
+            showLeaderboardMenu();
+            break;
+        case '2':
+            displayUserSummary(&user);
+            break;
+        case '3':
+            printf("Exiting program. Goodbye!\n");
+            break;
+        default:
+            printf("Invalid choice, please enter 1, 2 or 3.\n");
+    }
+} while (menuChoice != '3');
+
 
     return 0;
 }
+
